@@ -29,25 +29,9 @@ class InteractionDataInfo:
             'duration_time' : [duration_time]
         })
 
-class UserDataInfo:
-    def __init__(self, user_id, age, sex):
-        self.user_id = user_id
-        self.age = age
-        self.sex = sex
-        self.user_data = pd.DataFrame({
-            'user_id' :[user_id],
-            'age' : [age],
-            'sex' : [sex]
-        })
-    def get_user_data(self):
-        self.user_data['age_bin'] = pd.cut(self.user_data['age'], bins=[0,31,42,57,np.inf], labels= ['<= 31', '32 - 42', '43 - 57', '>= 58'])
-        self.user_data = pd.get_dummies(self.user_data.drop(columns = ['age']))
-        self.user_data = self.user_data.astype(float) 
-        return self.user_data
-        
 class RecommendService:
     def __init__(self):
-        self.set_user_datas('data/user_data.csv')
+        self.set_user_datas('data/user_classification.csv')
         self.set_article_datas('data/article_data.csv')
         self.set_interaction_datas('data/interaction_data.csv')
         
@@ -64,24 +48,23 @@ class RecommendService:
         self.interaction_datas = pd.read_csv(interaction_data_path)
         
     def make_dataset(self):
-        self.user_datas['age_bin'] = pd.cut(self.user_datas['age'], bins=[0,31,42,57,np.inf], labels= ['<= 31', '32 - 42', '43 - 57', '>= 58'])
-        self.user_datas = pd.get_dummies(self.user_datas.drop(columns = ['age']))
-        self.user_features_col = self.user_datas.drop(columns =['user_id']).columns.values
-        self.user_feat = self.user_datas.drop(columns =['user_id']).to_dict(orient='records')
+        self.user_datas = pd.get_dummies(self.user_datas)
+        self.user_features_col = self.user_datas.drop(columns =['classification_id']).columns.values
+        self.user_feat = self.user_datas.drop(columns =['classification_id']).to_dict(orient='records')
         
         self.item_features = self.article_datas
         self.item_features_col = self.item_features.drop(columns=['article_id']).columns.values
         self.item_feat = self.item_features.drop(columns =['article_id']).to_dict(orient='records')
         
         self.dataset = Dataset()
-        self.dataset.fit(users=[x for x in self.user_datas['user_id']], items=[x for x in self.article_datas['article_id']], item_features=self.item_features_col, user_features=self.user_features_col)
+        self.dataset.fit(users=[x for x in self.user_datas['classification_id']], items=[x for x in self.article_datas['article_id']], item_features=self.item_features_col, user_features=self.user_features_col)
         
         self.item_features = self.dataset.build_item_features((x,y) for x,y in zip(self.item_features['article_id'], self.item_feat))
-        self.user_features = self.dataset.build_user_features((x,y) for x,y in zip(self.user_datas['user_id'], self.user_feat))
+        self.user_features = self.dataset.build_user_features((x,y) for x,y in zip(self.user_datas['classification_id'], self.user_feat))
         
         (self.interactions, self.weights) = self.dataset.build_interactions((x, y)
-                                                    for x,y in zip(self.interaction_datas['user_id'], self.interaction_datas['article_id']))
-        
+                                                    for x,y in zip(self.interaction_datas['classification_id'], self.interaction_datas['article_id']))
+    
         num_users, num_items = self.dataset.interactions_shape()
         print('Num users: {}, num_items {}.'.format(num_users, num_items))
         
@@ -114,19 +97,13 @@ class RecommendService:
         
         return self.article_datas.iloc[best]
     
-    def items_for_new_user(self, new_user_data:UserDataInfo, N:int):
-        new_user = new_user_data.get_user_data()
-        print(new_user)
-        new_user = csr_matrix(new_user)
-        scores_new_user = self.model.predict(user_ids = 0,item_ids = np.arange(self.interactions.shape[1]), user_features=new_user)
-        top_items_new_user = self.article_datas.iloc[np.argsort(-scores_new_user)]
-        return top_items_new_user[:N]
-    
-    def add_user(self, user_data:UserDataInfo):
-        df = pd.read_csv(self.user_data_path)
-        df = pd.concat([df, user_data.user_data], ignore_index=True)
-        df.to_csv(self.user_data_path, index=False)
-        print("user is added")
+    # def items_for_new_user(self, new_user_data:UserDataInfo, N:int):
+    #     new_user = new_user_data.get_user_data()
+    #     print(new_user)
+    #     new_user = csr_matrix(new_user)
+    #     scores_new_user = self.model.predict(user_ids = 0,item_ids = np.arange(self.interactions.shape[1]), user_features=new_user)
+    #     top_items_new_user = self.article_datas.iloc[np.argsort(-scores_new_user)]
+    #     return top_items_new_user[:N]
         
     def add_interaction_data(self, interaction_data:InteractionDataInfo):
         df = pd.read_csv(self.interaction_data_path)
