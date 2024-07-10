@@ -101,13 +101,6 @@ class RecommendService:
         
         return self.article_datas.iloc[best]
     
-    # def items_for_new_user(self, new_user_data:UserDataInfo, N:int):
-    #     new_user = new_user_data.get_user_data()
-    #     print(new_user)
-    #     new_user = csr_matrix(new_user)
-    #     scores_new_user = self.model.predict(user_ids = 0,item_ids = np.arange(self.interactions.shape[1]), user_features=new_user)
-    #     top_items_new_user = self.article_datas.iloc[np.argsort(-scores_new_user)]
-    #     return top_items_new_user[:N]
     def get_time_weight(self, article_id):
         today = datetime.now().date()
         date_obj = datetime.strptime(self.article_datas[self.article_datas['article_id'] == article_id]['created at'].iloc[0], "%Y-%m-%d").date()
