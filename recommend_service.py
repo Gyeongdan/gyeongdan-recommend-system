@@ -6,18 +6,21 @@ from lightfm.evaluation import precision_at_k, recall_at_k, auc_score
 import numpy as np
 from lightfm.cross_validation import random_train_test_split
 import os
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, coo_matrix
 import pandas as pd
 
+from datetime import datetime
+
 class ArticleDataInfo:
-    def __init__(self, article_id, category):
+    def __init__(self, article_id, category, created_at):
         self.article_data = pd.DataFrame({
             'article_id' : article_id,
             'Economy and Business' : [0], 
             'Politics and Society' : [0], 
             'Technology and Culture' : [0], 
             'Sports and Leisure' : [0], 
-            'Opinion and Analysis' : [0]
+            'Opinion and Analysis' : [0],
+            'created at' : [created_at]
             })
         self.article_data.iloc[0][category] = 1
 
@@ -53,8 +56,8 @@ class RecommendService:
         self.user_feat = self.user_datas.drop(columns =['classification_id']).to_dict(orient='records')
         
         self.item_features = self.article_datas
-        self.item_features_col = self.item_features.drop(columns=['article_id']).columns.values
-        self.item_feat = self.item_features.drop(columns =['article_id']).to_dict(orient='records')
+        self.item_features_col = self.item_features.drop(columns=['article_id', 'created at']).columns.values
+        self.item_feat = self.item_features.drop(columns =['article_id', 'created at']).to_dict(orient='records')
         
         self.dataset = Dataset()
         self.dataset.fit(users=[x for x in self.user_datas['classification_id']], items=[x for x in self.article_datas['article_id']], item_features=self.item_features_col, user_features=self.user_features_col)
@@ -62,8 +65,11 @@ class RecommendService:
         self.item_features = self.dataset.build_item_features((x,y) for x,y in zip(self.item_features['article_id'], self.item_feat))
         self.user_features = self.dataset.build_user_features((x,y) for x,y in zip(self.user_datas['classification_id'], self.user_feat))
         
-        (self.interactions, self.weights) = self.dataset.build_interactions((x, y)
-                                                    for x,y in zip(self.interaction_datas['classification_id'], self.interaction_datas['article_id']))
+        (self.interactions, self.weights) = self.dataset.build_interactions((x, y, z * self.get_time_weight(y))
+                                                    for x,y, z in zip(
+                                                        self.interaction_datas['classification_id'], 
+                                                        self.interaction_datas['article_id'], 
+                                                        self.interaction_datas['duration_time']))
     
         num_users, num_items = self.dataset.interactions_shape()
         print('Num users: {}, num_items {}.'.format(num_users, num_items))
@@ -78,9 +84,7 @@ class RecommendService:
     def fit_model(self): 
         self.make_dataset()
         self.make_model()
-        # self.train, self.test = random_train_test_split(self.interactions,test_percentage=0.2, random_state=779)
-        # self.train_w, self.test_w = random_train_test_split(self.weights, test_percentage=0.2, random_state=779)
-        self.model.fit(self.interactions,  user_features= self.user_features, item_features= self.item_features, epochs=self.epoch,num_threads = self.num_thread, sample_weight = self.weights)
+        self.model.fit(self.interactions, user_features= self.user_features, item_features= self.item_features, epochs=self.epoch,num_threads = self.num_thread, sample_weight = self.weights)
         
     def get_top_n_articles(self, user_id:int, article_num:int):
         item_ids = np.arange(self.interactions.shape[1])  # 예측할 아이템 ID 배열
@@ -104,6 +108,12 @@ class RecommendService:
     #     scores_new_user = self.model.predict(user_ids = 0,item_ids = np.arange(self.interactions.shape[1]), user_features=new_user)
     #     top_items_new_user = self.article_datas.iloc[np.argsort(-scores_new_user)]
     #     return top_items_new_user[:N]
+    def get_time_weight(self, article_id):
+        today = datetime.now().date()
+        date_obj = datetime.strptime(self.article_datas[self.article_datas['article_id'] == article_id]['created at'].iloc[0], "%Y-%m-%d").date()
+        difference = today - date_obj
+        return max(1 - ((difference.days//30)/5), 0)
+            
         
     def add_interaction_data(self, interaction_data:InteractionDataInfo):
         df = pd.read_csv(self.interaction_data_path)
