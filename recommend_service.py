@@ -114,6 +114,9 @@ class RecommendService:
         difference = today - date_obj
         return max(1 - ((difference.days//30)/5), 0)
             
+    def fit_model_partialy(self):
+        self.make_dataset
+        self.model.fit_partial(self.interactions, item_features=self.item_features)
         
     def add_interaction_data(self, interaction_data:InteractionDataInfo):
         df = pd.read_csv(self.interaction_data_path)
